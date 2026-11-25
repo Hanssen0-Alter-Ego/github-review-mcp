@@ -23,7 +23,7 @@ export function github(env, fetcher = fetch) {
     let r;
     try {
       r = await fetcher(API+path, {
-        method, redirect:'error', signal:AbortSignal.timeout(12000),
+        method, redirect:'manual', signal:AbortSignal.timeout(12000),
         headers:{ Authorization:'Bearer '+env.GITHUB_TOKEN, Accept:'application/vnd.github+json', 'X-GitHub-Api-Version':'2022-11-28', 'User-Agent':'github-review-mcp', ...(body ? {'Content-Type':'application/json'} : {}) },
         ...(body ? {body:JSON.stringify(body)} : {})
       });
@@ -31,7 +31,7 @@ export function github(env, fetcher = fetch) {
     const request_id = r.headers.get('x-github-request-id');
     if (!r.ok) throw new Failure('github_http', 'GitHub returned HTTP '+r.status+'.', {
       github_status:r.status, github_request_id:request_id, retry_after:r.headers.get('retry-after'),
-      uncertain:mutation && (r.status>=500 || r.status===408)
+      uncertain:mutation && ((r.status>=300 && r.status<400) || r.status>=500 || r.status===408)
     });
     try { return await r.json(); }
     catch { throw new Failure('github_response', 'GitHub returned an unreadable response.', {uncertain:mutation,github_request_id:request_id}); }

@@ -20,10 +20,11 @@ function fixture() {
   const c=(data={})=>({id:123,node_id:'IC_test',html_url:'https://github.com/team/project/pull/9#issuecomment-123',body:'previous',user:{login:'bot',id:mock.commentOwner},...data});
   const worker=handler(async (u,init)=>{
     assert.equal(new URL(u).origin,origin);
-    assert.equal(init.redirect,'error');
+    assert.equal(init.redirect,'manual');
     assert.equal(init.headers.Authorization,'Bearer not-a-real-token');
     const p=u.slice(origin.length), m=init.method, b=init.body===undefined?undefined:JSON.parse(init.body);
     mock.calls.push({p,m,b});
+    if(p==='/user'&&mock.redirect)return new Response(null,{status:302,headers:{Location:'https://elsewhere.invalid/'}});
     if(p==='/user')return Response.json({id:mock.actor,login:'bot'});
     if(p===paths.pull&&m==='GET'){mock.pr_reads++;if(mock.advanceAt===mock.pr_reads)mock.head='c'.repeat(40);return Response.json(pr())}
     if(p===root+'/issues/comments/123'&&m==='GET')return Response.json(c({issue_url:mock.commentUrl}));
@@ -88,8 +89,8 @@ test('receipt prevents duplicate writes even for concurrent requests',async()=>{
   assert.equal((await f.rpc('github_create_pr_comment',{...a,body:'different'})).code,'request_id_conflict');
   assert.equal(f.mutations().length,1);
 });
-test('ambiguous timeout or upstream failure stays unknown; not retried',async()=>{
-  for(const why of [{timeout:true},{failStatus:502}]){
+test('ambiguous timeout, redirect or upstream failure stays unknown; not retried',async()=>{
+  for(const why of [{timeout:true},{failStatus:302},{failStatus:502}]){
     const f=fixture();Object.assign(f.mock,why);
     const a={...write,body:'test'};
     assert.equal((await f.rpc('github_create_pr_comment',a)).status,'unknown');
@@ -176,4 +177,13 @@ test('empty or mixed wildcard configuration and dot path segments fail closed',a
   f.env.ALLOWED_REPOS='*';
   await f.rpc('github_get_pr',{repo:'team/..',pr:9});
   assert.equal(f.mock.calls.length,0);
+});
+
+test('GitHub redirect is rejected rather than followed',async()=>{
+  const f=fixture();
+  f.mock.redirect=true;
+  const result=await f.rpc('github_status',{});
+  assert.equal(result.code,'github_http');
+  assert.equal(result.github_status,302);
+  assert.deepEqual(f.mock.calls.map(x=>x.p),['/user']);
 });
