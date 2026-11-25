@@ -1,6 +1,6 @@
 # GitHub Review MCP
 
-单账号、按仓库授权的 GitHub PR 审查工具，部署到 Cloudflare Workers。Worker 持有 GitHub token，直连 GitHub REST / GraphQL，不运行 `gh`，也不提供通用代理、命令执行或任意 GraphQL。借鉴 [Telegram MCP Bridge](https://github.com/Hanssen0-Alter-Ego/telegram-mcp-bridge) 的独立客户端密钥、可选私有 URL 和 D1 回执。
+单账号、可选仓库白名单的 GitHub PR 审查工具，部署到 Cloudflare Workers。Worker 持有 GitHub token，直连 GitHub REST / GraphQL，不运行 `gh`，也不提供通用代理、命令执行或任意 GraphQL。借鉴 [Telegram MCP Bridge](https://github.com/Hanssen0-Alter-Ego/telegram-mcp-bridge) 的独立客户端密钥、可选私有 URL 和 D1 回执。
 
 ## 工具
 
@@ -29,7 +29,7 @@ npx wrangler login
 npx wrangler d1 create github-review-mcp
 ```
 
-在 `wrangler.jsonc` 填返回的 `database_id`，将 `ALLOWED_REPOS` 设为逗号分隔的完整仓库名（例如 `ckb-devrel/ccc,RGBPlusPlus/btc-assets-api`），并填目标 GitHub 账户的数字 ID（Alter Ego 是 `343111139`）。默认无任何授权仓库。仓库移交给别的 owner 后不得沿用旧配置。单 Worker 只服务一个 GitHub 身份；隔离多个身份或不同仓库权限时，分别部署并用不同 D1 库和客户端密钥。
+在 `wrangler.jsonc` 填返回的 `database_id`，将 `ALLOWED_REPOS` 设为逗号分隔的完整仓库名（例如 `ckb-devrel/ccc,RGBPlusPlus/btc-assets-api`），并填目标 GitHub 账户的数字 ID（Alter Ego 是 `343111139`）。不想维护仓库名单时，设为 `"ALLOWED_REPOS": "*"`，Worker 不额外限制仓库，实际访问仍由 GitHub token 和组织策略决定。空配置仍拒绝操作；`*` 不可与仓库名单混用。仓库移交后请重新核对 GitHub 授权和白名单。单 Worker 只服务一个 GitHub 身份；隔离多个身份或不同仓库权限时，分别部署并用不同 D1 库和客户端密钥。
 
 ```sh
 npx wrangler d1 migrations apply github-review-mcp --remote
@@ -53,7 +53,7 @@ npx wrangler secret put MCP_ACCESS_TOKEN
 
 私有 URL 本身就是能以该账号执行允许操作的凭据。关闭 Worker/反代的完整 URL 日志，不用浏览器打开，不截图、不分享。泄漏时立即替换/删除 `MCP_PATH_TOKEN` 并更新客户端。Worker 不记录 token、请求 URL 或评论原文，D1 只保存写入指纹、目标、状态和最小回执；平台与网络层的日志需另行检查。
 
-接入后先调用 `github_status` 核对 GitHub 登录和数字 ID、白名单、D1 是否就绪，然后对已授权 PR 调用 `github_get_pr`。就绪不代表 GitHub 授予了所有写权限；需要实际验证时只用单独授权的测试 PR，不在生产 PR 发测试评论。
+接入后先调用 `github_status` 核对 GitHub 登录和数字 ID、仓库范围（不限时显示 `["*"]`）、D1 是否就绪，然后对已授权 PR 调用 `github_get_pr`。就绪不代表 GitHub 授予了所有写权限；需要实际验证时只用单独授权的测试 PR，不在生产 PR 发测试评论。
 
 ## 写入 / 回执
 

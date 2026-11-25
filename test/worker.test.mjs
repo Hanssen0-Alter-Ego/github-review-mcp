@@ -149,3 +149,31 @@ test('missing receipt DB fails closed before any write',async()=>{
   assert.equal((await f.rpc('github_create_pr_comment',{...write,body:'test'})).code,'configuration');
   assert.equal(f.mock.calls.length,0);
 });
+
+test('explicit wildcard leaves repository access to GitHub and keeps write safeguards',async()=>{
+  const f=fixture();
+  f.env.ALLOWED_REPOS='*';
+  assert.deepEqual((await f.rpc('github_status',{})).allowed_repos,['*']);
+  assert.equal((await f.rpc('github_get_pr',{repo:write.repo,pr:write.pr})).head_sha,H);
+  const args={...write,body:'test'};
+  assert.equal((await f.rpc('github_create_pr_comment',{...args,head_sha:'b'.repeat(40)})).code,'head_changed');
+  assert.equal(f.mutations().length,0);
+  f.mock.failStatus=403;
+  const result=await f.rpc('github_create_pr_comment',args);
+  assert.equal(result.status,'rejected');
+  assert.equal(result.github_status,403);
+  assert.equal(f.mutations().length,1);
+});
+
+test('empty or mixed wildcard configuration and dot path segments fail closed',async()=>{
+  for (const scope of ['', '*,team/project', 'team/*']) {
+    const f=fixture();
+    f.env.ALLOWED_REPOS=scope;
+    assert.equal((await f.rpc('github_get_pr',{repo:write.repo,pr:write.pr})).code,'configuration');
+    assert.equal(f.mock.calls.length,0);
+  }
+  const f=fixture();
+  f.env.ALLOWED_REPOS='*';
+  await f.rpc('github_get_pr',{repo:'team/..',pr:9});
+  assert.equal(f.mock.calls.length,0);
+});

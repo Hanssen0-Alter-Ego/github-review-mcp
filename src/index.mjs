@@ -7,7 +7,7 @@ import { receipt, mutate } from './receipts.mjs';
 const int = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 const text = z.string().min(1).max(20000).refine(v=>v.trim().length>0);
 const id = z.string().regex(/^[A-Za-z0-9_.:-]{8,128}$/);
-const repo = z.string().max(140).regex(/^[A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9_.-]+$/).transform(x=>x.toLowerCase());
+const repo = z.string().max(140).regex(/^[A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9_.-]+$/).refine(x=>!['.','..'].includes(x.split('/')[1])).transform(x=>x.toLowerCase());
 const target = {repo,pr:int.max(2147483647)};
 const write = {...target,head_sha:z.string().regex(/^[0-9a-f]{40}$/),request_id:id};
 const paged = {...target,page:int.max(300).default(1)};
@@ -18,7 +18,7 @@ const side = z.enum(['LEFT','RIGHT']);
 const anchor = z.strictObject({path:z.string().min(1).max(1024),body:text,line:int,side,start_line:int.optional(),start_side:side.optional()})
   .refine(x=>(x.start_line===undefined)===(x.start_side===undefined) && (x.start_line===undefined||(x.start_line<=x.line&&x.start_side===x.side)),{message:'A range requires start_line and start_side on the same side as the end.'});
 export const tools = {
-  github_status: ['Verify the GitHub identity and list permitted repositories.',{}],
+  github_status: ['Verify the GitHub identity and report the configured repository scope.',{}],
   github_get_pr: ['Read PR metadata and its current head SHA.',target],
   github_get_pr_checks: ['Read checks and commit statuses on current head; not a merge-readiness verdict.',paged],
   github_list_pr_files: ['Read changed paths and optional bounded patches. GitHub may omit a patch.',{...paged,include_patch:z.boolean().default(false)}],

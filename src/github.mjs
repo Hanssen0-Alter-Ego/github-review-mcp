@@ -5,11 +5,13 @@ export class Failure extends Error {
 export const fail = (code, message) => { throw new Failure(code, message); };
 export function policy(env) {
   const pattern = /^[a-z0-9][a-z0-9-]*\/[a-z0-9_.-]+$/;
-  const repos = new Set((env.ALLOWED_REPOS ?? '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean));
+  const scope = (env.ALLOWED_REPOS ?? '').trim();
+  const unrestricted = scope === '*';
+  const repos = new Set(unrestricted ? [] : scope.split(',').map(x => x.trim().toLowerCase()).filter(Boolean));
   const actor = Number(env.GITHUB_ACTOR_ID);
-  if (!repos.size || [...repos].some(x => !pattern.test(x)) || !Number.isSafeInteger(actor) || actor < 1 || !env.GITHUB_TOKEN)
-    fail('configuration', 'Configure an explicit repository allowlist, GitHub actor ID and token.');
-  return { repos, actor };
+  if ((!unrestricted && (!repos.size || [...repos].some(x => !pattern.test(x)))) || !Number.isSafeInteger(actor) || actor < 1 || !env.GITHUB_TOKEN)
+    fail('configuration', 'Configure ALLOWED_REPOS as an explicit list or *, plus a GitHub actor ID and token.');
+  return { repos, unrestricted, actor };
 }
 const pick = (o, keys) => Object.fromEntries(keys.filter(k => o?.[k] !== undefined).map(k => [k, o[k]]));
 const who = x => x ? pick(x, ['id', 'login']) : null;
@@ -47,7 +49,7 @@ export function github(env, fetcher = fetch) {
   }
   const prView = x => ({...pick(x,['id','node_id','number','html_url','title','body','state','draft','merged','mergeable','mergeable_state','created_at','updated_at']),user:who(x.user),head_sha:x.head?.sha,base_sha:x.base?.sha,base_ref:x.base?.ref});
   async function target({repo,pr}) {
-    if (!p.repos.has(repo)) fail('repo_denied','Repository is not in the allowlist.');
+    if (!p.unrestricted && !p.repos.has(repo)) fail('repo_denied','Repository is not in the allowlist.');
     const root='/repos/'+repo, pull=root+'/pulls/'+pr, issue=root+'/issues/'+pr, current=await api(pull);
     if (current.number!==pr || current.base?.repo?.full_name?.toLowerCase()!==repo)
       fail('wrong_target','GitHub returned a different repository or pull request.');
@@ -88,7 +90,7 @@ export function github(env, fetcher = fetch) {
       const actor=await identity();
       let receipts_ready=false;
       try { if(env.RECEIPTS){await env.RECEIPTS.prepare('SELECT request_id FROM write_receipts LIMIT 1').first();receipts_ready=true;} } catch {}
-      return {actor,allowed_repos:[...p.repos],receipts_ready,write_enabled:receipts_ready};
+      return {actor,allowed_repos:p.unrestricted ? ['*'] : [...p.repos],receipts_ready,write_enabled:receipts_ready};
     }
     await identity();
     const t=await target(a);
