@@ -1,0 +1,5 @@
+# Copy locally to .dev.vars only if you need local credentials. Never commit .dev.vars.
+GITHUB_TOKEN=
+MCP_ACCESS_TOKEN=
+# Optional path mode; leave unset by default.
+# MCP_PATH_TOKEN=
